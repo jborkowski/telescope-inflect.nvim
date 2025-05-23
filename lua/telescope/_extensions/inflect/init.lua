@@ -19,20 +19,51 @@ local function get_project_root()
   return vim.loop.cwd()
 end
 
--- Parse input like: #pattern [-- options]#filter
---
--- JB its wrong! requires better parsing command
 local function parse_input(input)
-  local rg_part, filter = input:match("^#(.-)#(.*)")
-  rg_part = rg_part or input
-  filter = filter ~= "" and filter or nil
+  local rg_part, filter = nil, nil
+  local rg_opts = {}
 
-  local rg_pattern, rg_opts = rg_part:match("^(.-)%s+%-%-%s+(.*)$")
-  if rg_pattern then
-    return vim.trim(rg_pattern), vim.split(rg_opts, "%s+"), filter
+  -- Case: /pattern/filter
+  local is_slash_syntax = input:match("^/.*/")
+  if is_slash_syntax then
+    local raw_rg, raw_filter = input:match("^/(.-)/(.*)")
+    rg_part = vim.trim(raw_rg or "")
+    filter = vim.trim(raw_filter or "")
+    if filter == "" then filter = nil end
+
+    -- Case: #pattern#filter
+  elseif input:match("^#.-#") then
+    local raw_rg, raw_filter = input:match("^#(.-)#(.*)")
+    rg_part = vim.trim(raw_rg or "")
+    filter = vim.trim(raw_filter or "")
+    if filter == "" then filter = nil end
+
+    -- Case: #pattern
+  elseif input:match("^#") then
+    rg_part = vim.trim(input:sub(2))
+
+
+    -- Fallback: plain
+  else
+    rg_part = vim.trim(input)
   end
 
-  return vim.trim(rg_part), {}, filter
+  -- Parse rg options like: 'foo -- --smart-case --glob=*.lua'
+  local main_pattern, opts = rg_part:match("^(.-)%s+%-%-%s+(.*)$")
+  if main_pattern then
+    rg_part = vim.trim(main_pattern)
+    for opt in opts:gmatch("%-%-[^%s]+") do
+      table.insert(rg_opts, opt)
+    end
+  end
+
+  vim.notify(string.format("Parsed input: pattern='%s', options=%s, filter=%s",
+    rg_part,
+    vim.inspect(rg_opts),
+    filter or "nil"
+  ), vim.log.levels.INFO)
+
+  return rg_part, rg_opts, filter
 end
 
 -- Split rg into individual expressions (space-separated, \-escaped)
@@ -58,7 +89,6 @@ local function split_regexps(rg_string)
   return regexps
 end
 
--- Compile the regexps list into a single orderless-style PCRE2 regex
 local function compile_orderless_from_parts(parts)
   local lookaheads = {}
   for _, word in ipairs(parts) do
@@ -84,7 +114,7 @@ local function async_rg_finder(prompt)
   if not prompt or #prompt < 3 then return nil end
   local search_dir = get_project_root()
 
-  local rg_pattern, rg_opts, filter = parse_input(prompt)
+  local rg_pattern, rg_opts, _ = parse_input(prompt)
 
   local command_builder = {
     "rg", "--vimgrep",
@@ -118,7 +148,7 @@ local function async_rg_finder(prompt)
 
   table.insert(command_builder, search_dir)
 
-  return command_builder, filter
+  return command_builder
 end
 
 local function ripgrep(opts)
@@ -126,24 +156,50 @@ local function ripgrep(opts)
 
   local search_dir = opts.search_dir or get_project_root()
 
-  local last_filter = nil
-
-  local function command_generator(prompt)
-    local command, filter = async_rg_finder(prompt)
-    last_filter = filter
-    return command
-  end
+  local entry_maker = make_entry.gen_from_vimgrep(opts)
 
   local picker = pickers.new(vim.tbl_extend("force", opts, {
     prompt_title = "Inflect Ripgrep",
-    finder = finders.new_job(command_generator, opts.entry_maker or make_entry.gen_from_vimgrep(opts), opts, search_dir),
-    previewer = conf.grep_previewer(opts),
-    sorter = conf.generic_sorter(opts),
-  }))
 
-  if last_filter then
-    picker:default_text(last_filter)
-  end
+    finder = finders.new_job(
+      async_rg_finder,
+      entry_maker,
+      opts
+    ),
+
+    previewer = conf.grep_previewer(opts),
+    -- Fix sorting for double filtering
+    sorter = nil
+    -- sorter = conf.generic_sorter({
+
+    --   filter_function = function(entry, prompt)
+    --     local _, _, filter = parse_input(prompt)
+    --     if not filter or filter == "" then
+    --       return true
+    --     end
+
+    --     local positions = require("telescope.algos").fzy_filter(filter, entry.ordinal or "")
+    --     return positions ~= nil
+    --   end,
+
+    --   scoring_function = function(entry, prompt)
+    --     local _, _, filter = parse_input(prompt)
+    --     if not filter or filter == "" then
+    --       return 1
+    --     end
+
+    --     local score = require("telescope.algos").fzy_score(filter, entry.ordinal or "")
+    --     return score or -1
+    --   end,
+
+    --   highlighter = function(entry, prompt)
+    --     local pattern, _, filter = parse_input(prompt)
+    --     return require("telescope.algos").fzy_positions(entry.ordinal or "", filter or pattern)
+    --   end
+    -- })
+
+
+  }))
 
   picker:find()
 end
