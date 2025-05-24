@@ -1,7 +1,7 @@
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local sorters = require("telescope.sorters")
-local conf = require("telescope.config").values
+local previewers = require("telescope.previewers")
 local make_entry = require('telescope.make_entry')
 local fzy = require "telescope.algos.fzy"
 
@@ -168,10 +168,9 @@ local function ripgrep(opts)
     return command_builder
   end, entry_maker, opts.max_results, search_dir)
 
-
   local OFFSET = -fzy.get_score_floor()
   local sorter = sorters.Sorter:new {
-    scoring_function = function(_, prompt, line)
+    scoring_function = function(_, _, line)
       local filter = state.filter or ""
       if not fzy.has_match(filter, line) then
         return -1
@@ -186,23 +185,21 @@ local function ripgrep(opts)
       return 1 / (fzy_score + OFFSET)
     end,
 
-
     highlighter = function(_, prompt, display)
-      local filter = state.filter or ""
+      local pattern, _, _ = parse_input(prompt)
+      local filter = state.filter or pattern
 
       return fzy.positions(filter, display)
     end,
   }
 
-  local picker = pickers.new(opts, {
+  pickers.new(opts, {
     prompt_title = "Inflect Ripgrep",
     finder = rg_finder,
-    previewer = conf.grep_previewer(opts),
+    previewer = require("telescope.config").values.grep_previewer(opts),
     sorter = sorter,
     push_cursor_on_edit = true,
-  })
-
-  picker:find()
+  }):find()
 end
 
 return require("telescope").register_extension({
