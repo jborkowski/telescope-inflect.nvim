@@ -121,11 +121,5 @@ This approach combines the speed of ripgrep with the flexibility of fuzzy matchi
 - Two-layer filtering approach: ripgrep for initial search + FZY for refined filtering
 - Support for orderless-style searching (terms in any order)
 - More flexible search syntax with multiple input options
-- Ability to pass additional ripgrep options on-the-fly
-
-## Additional Benefits
-
-- Provides fine-grained searching capabilities
-- Offers flexibility to tune grep results (e.g., filtering by file extensions or including hidden files)
-- Allows for ad-hoc adjustments to search parameters without changing configuration
+- Ability to pass additional ripgrep options on-the-fly (e.g., filtering by file extensions or including hidden files)
 
