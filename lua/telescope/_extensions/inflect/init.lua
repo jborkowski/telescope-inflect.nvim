@@ -78,6 +78,9 @@ local function parse_input(input)
 end
 
 -- Split rg into individual expressions (space-separated, \-escaped)
+
+
+
 local function split_regexps(rg_string)
   local regexps = {}
   local part = ""
@@ -100,12 +103,19 @@ local function split_regexps(rg_string)
   return regexps
 end
 
+local function escape_regex_special_chars(s)
+  return s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?%{%}%|%\\])", "\\%1")
+end
+
+local function escape_pcre2(s)
+  return s:gsub("([%[%]%(%)%.%+%-%*%?%^%$%%{}|\\/!~])", "\\%1")
+end
+
 local function compile_orderless_from_parts(parts)
   local lookaheads = {}
   for _, word in ipairs(parts) do
-    -- escape special characters
-    word = word:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
-    table.insert(lookaheads, "(?=.*" .. word .. ")")
+    local escaped = escape_regex_special_chars(word)
+    table.insert(lookaheads, "(?=.*" .. escaped .. ")")
   end
   return table.concat(lookaheads, "")
 end
@@ -138,8 +148,7 @@ local function ripgrep(opts)
     local command_builder = {
       "rg", "--vimgrep",
       "--line-buffered", "--color=never", "--max-columns=1000",
-      "--path-separator", "/", "--smart-case",
-      "--no-heading", "--with-filename", "--line-number", "--search-zip"
+      "--smart-case", "--no-heading", "--with-filename", "--line-number", "--search-zip"
     }
 
     vim.list_extend(command_builder, rg_args)
